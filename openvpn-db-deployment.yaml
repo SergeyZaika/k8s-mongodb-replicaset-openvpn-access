@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openvpn-db
+  namespace: vpn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openvpn-db
+  template:
+    metadata:
+      labels:
+        app: openvpn-db
+    spec:
+      containers:
+        - name: openvpn
+          image: kylemanna/openvpn:latest
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - NET_ADMIN
+          command: ["sh", "-lc"]
+          args:
+            - |
+              sysctl -w net.ipv4.ip_forward=1
+              iptables -t nat -C POSTROUTING -s 10.88.0.0/24 -j MASQUERADE 2>/dev/null || \
+                iptables -t nat -A POSTROUTING -s 10.88.0.0/24 -j MASQUERADE
+              exec /usr/sbin/openvpn --config /etc/openvpn/server/server-tcp.conf
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          ports:
+            - containerPort: 1194
+              protocol: TCP
+          volumeMounts:
+            - name: openvpn-config
+              mountPath: /etc/openvpn
+              readOnly: true
+            - name: dev-net-tun
+              mountPath: /dev/net/tun
+      volumes:
+        - name: openvpn-config
+          secret:
+            secretName: openvpn-db-config
+            defaultMode: 0400
+            items:
+              - key: ca.crt
+                path: ca.crt
+              - key: server.crt
+                path: server.crt
+              - key: server.key
+                path: server.key
+              - key: dh.pem
+                path: dh.pem
+              - key: crl.pem
+                path: crl.pem
+              - key: ta.key
+                path: ta.key
+              - key: server-tcp.conf
+                path: server/server-tcp.conf
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice
