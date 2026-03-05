@@ -28,6 +28,16 @@ This repository demonstrates a controlled access model: a purpose-scoped OpenVPN
 
 This pattern is used when database ports must remain private while still allowing controlled operational access for developers, migration tooling, and administrative tasks.
 
+### Architecture Scope
+
+The primary goal of this repository is to demonstrate secure administrative access to MongoDB ReplicaSets inside Kubernetes.
+
+The `data-access` directory contains the core architecture used for database access.
+
+The `monitoring` directory provides an optional extension showing how the same VPN access pattern can be reused to access internal monitoring systems such as Prometheus.
+
+The monitoring configuration is **not required** for MongoDB access and is included only as an additional example.
+
 ### Core Principle
 
 Databases should never be exposed directly to the internet.
@@ -139,11 +149,11 @@ Both WireGuard and overlay mesh solutions like Tailscale can dynamically modify 
 
 | Resource | File | Purpose |
 |---|---|---|
-| Namespace | `namespace-vpn.yaml` | Isolates VPN workload |
-| Deployment | `openvpn-db-deployment.yaml` | Runs OpenVPN server pod |
-| Service | `openvpn-db-service.yaml` | Exposes NodePort 31194 |
-| Secret | `openvpn-db-secret.yaml` | PKI material and server config |
-| NetworkPolicy | `networkpolicy-openvpn-db-egress.yaml` | Restricts egress to MongoDB only |
+| Namespace | `data-access/namespace-vpn.yaml` | Isolates VPN workload |
+| Deployment | `data-access/openvpn-db-deployment.yaml` | Runs OpenVPN server pod |
+| Service | `data-access/openvpn-db-service.yaml` | Exposes NodePort 31194 |
+| Secret | `data-access/openvpn-db-secret.yaml` | PKI material and server config |
+| NetworkPolicy | `data-access/networkpolicy-openvpn-db-egress.yaml` | Restricts egress to MongoDB only |
 
 ### Deployment
 
@@ -266,6 +276,36 @@ These operations require direct MongoDB connectivity that cannot be safely expos
 
 ---
 
+## Monitoring Access Through VPN
+
+The same OpenVPN gateway used for database access can also provide secure access to monitoring systems running outside the Kubernetes cluster.
+
+A common pattern is Grafana deployed outside the cluster, connecting to Prometheus running inside it. Prometheus has no public endpoint — it remains internal to the cluster and is only reachable through the VPN tunnel.
+
+```
+Grafana Server
+      |
+OpenVPN Client
+      |
+VPN Tunnel
+      |
+Kubernetes Cluster
+      |
+Prometheus :9090
+```
+
+Grafana connects to Prometheus using the internal Kubernetes service name:
+
+```
+http://prometheus.monitoring.svc.cluster.local:9090
+```
+
+This requires the VPN client on the Grafana host to push the cluster pod CIDRs and DNS resolver — the same routes and DNS settings used for operational database access. No additional VPN infrastructure is needed; monitoring traffic shares the same tunnel.
+
+Prometheus is never exposed publicly. Access is gated by VPN certificate authentication, with the same NetworkPolicy controls that apply to all VPN egress.
+
+---
+
 ## When to use this architecture
 
 This pattern is appropriate when:
@@ -362,23 +402,38 @@ For environments where database security is critical, this trade-off is often ju
 
 ## Repository Structure
 
+The repository is organized into two logical components:
+
+- **data-access** — primary architecture for secure MongoDB administrative access
+- **monitoring** — optional extension demonstrating VPN-based access to monitoring systems (Prometheus)
+
 ```
 .
-├── namespace-vpn.yaml                    # Namespace: vpn
-├── openvpn-db-deployment.yaml            # OpenVPN server Deployment
-├── openvpn-db-service.yaml               # NodePort Service (TCP 31194)
-├── openvpn-db-secret.yaml                # PKI material + server.conf (placeholders)
-└── networkpolicy-openvpn-db-egress.yaml  # Egress NetworkPolicy to MongoDB
+├── data-access/
+│   ├── namespace-vpn.yaml
+│   ├── openvpn-db-deployment.yaml
+│   ├── openvpn-db-service.yaml
+│   ├── openvpn-db-secret.yaml
+│   └── networkpolicy-openvpn-db-egress.yaml
+│
+├── monitoring/
+│   ├── openvpn-monitoring-deployment.yaml
+│   ├── openvpn-monitoring-service.yaml
+│   ├── openvpn-monitoring-secret.yaml
+│   ├── networkpolicy-openvpn-monitoring-egress.yaml
+│   └── openvpn-client-monitoring.conf
+│
+└── README.md
 ```
 
 Apply order:
 
 ```bash
-kubectl apply -f namespace-vpn.yaml
-kubectl apply -f openvpn-db-secret.yaml
-kubectl apply -f openvpn-db-deployment.yaml
-kubectl apply -f openvpn-db-service.yaml
-kubectl apply -f networkpolicy-openvpn-db-egress.yaml
+kubectl apply -f data-access/namespace-vpn.yaml
+kubectl apply -f data-access/openvpn-db-secret.yaml
+kubectl apply -f data-access/openvpn-db-deployment.yaml
+kubectl apply -f data-access/openvpn-db-service.yaml
+kubectl apply -f data-access/networkpolicy-openvpn-db-egress.yaml
 ```
 
 ---
