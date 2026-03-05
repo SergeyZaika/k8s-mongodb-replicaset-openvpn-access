@@ -278,6 +278,8 @@ These operations require direct MongoDB connectivity that cannot be safely expos
 
 ## Monitoring Access Through VPN
 
+This section demonstrates how the same VPN access pattern can be reused for monitoring systems.
+
 The same OpenVPN gateway used for database access can also provide secure access to monitoring systems running outside the Kubernetes cluster.
 
 A common pattern is Grafana deployed outside the cluster, connecting to Prometheus running inside it. Prometheus has no public endpoint — it remains internal to the cluster and is only reachable through the VPN tunnel.
@@ -302,7 +304,7 @@ http://prometheus.monitoring.svc.cluster.local:9090
 
 This requires the VPN client on the Grafana host to push the cluster pod CIDRs and DNS resolver — the same routes and DNS settings used for operational database access. No additional VPN infrastructure is needed; monitoring traffic shares the same tunnel.
 
-Prometheus is never exposed publicly. Access is gated by VPN certificate authentication, with the same NetworkPolicy controls that apply to all VPN egress.
+Prometheus is never exposed publicly. Access to Prometheus is additionally restricted by Kubernetes NetworkPolicy rules applied to the VPN pod. Access is gated by VPN certificate authentication, with the same NetworkPolicy controls that apply to all VPN egress.
 
 ---
 
